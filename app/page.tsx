@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
+import logoImg from "@/resources/Quazarcloudlogo.png";
 
 export default function Home() {
   return (
@@ -13,18 +15,28 @@ export default function Home() {
           padding: "36px 24px 40px",
         }}
       >
-        <div style={{ maxWidth: 720, margin: "0 auto", textAlign: "center" }}>
-          <div
-            style={{
-              fontSize: 12,
-              opacity: 0.8,
-              letterSpacing: 2,
-              textTransform: "uppercase",
-              marginBottom: 8,
-            }}
-          >
-            BatStateU Lipa Campus · Office of Library Services
-          </div>
+        <div
+          style={{
+            fontSize: 12,
+            opacity: 0.9,
+            letterSpacing: 2,
+            textTransform: "uppercase",
+            textAlign: "center",
+            marginBottom: 12,
+          }}
+        >
+          Library System
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 24,
+            marginBottom: 12,
+          }}
+        >
+          <Image src={logoImg} alt="Quazar" width={160} height={48} style={{ display: "block", flexShrink: 0 }} />
           <h1
             style={{
               margin: 0,
@@ -36,6 +48,9 @@ export default function Home() {
           >
             Quazar-Lib
           </h1>
+          <Image src={logoImg} alt="Quazar" width={160} height={48} style={{ display: "block", flexShrink: 0 }} />
+        </div>
+        <div style={{ maxWidth: 720, margin: "0 auto", textAlign: "center" }}>
           <p
             style={{
               margin: "12px 0 0",

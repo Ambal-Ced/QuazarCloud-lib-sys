@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processData } from "@/lib/processor";
 import { loadCustomMappings } from "@/lib/courseMappingsStorage";
+import { addCommit } from "@/lib/commitHistoryStorage";
 import path from "path";
 import fs from "fs";
 
@@ -91,12 +92,16 @@ export async function POST(req: NextRequest) {
     if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
     fs.writeFileSync(CURRENT_REPORT_FILE, result.buffer!);
 
+    // Append to commit history for undo
+    const commit = addCommit(pasteText);
+
     return NextResponse.json({
       file: result.buffer!.toString("base64"),
       totalRecords: result.totalRecords,
       matched: result.matched,
       unmatched: result.unmatched,
       summary: result.summary,
+      commit: { id: commit.id, timestamp: commit.timestamp },
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";

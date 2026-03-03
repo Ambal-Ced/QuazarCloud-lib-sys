@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { COLLEGES, getUpdatedColleges } from "@/lib/colleges";
-import logoImg from "@/resources/Quazarcloudlogo.webp";
+import logoImg from "@/resources/Quazarcloudlogo.png";
 
 interface SummaryEntry {
   label: string;
@@ -19,6 +19,12 @@ interface ProcessResponse {
   unmatched?: string[];
   summary?: SummaryEntry[];
   error?: string;
+  commit?: { id: string; timestamp: string };
+}
+
+interface CommitEntry {
+  id: string;
+  timestamp: string;
 }
 
 interface TemplateStatus {
@@ -62,7 +68,25 @@ export default function UtilizationPage() {
   const [showMappingModal, setShowMappingModal] = useState(false);
   const [editTargets, setEditTargets] = useState<{ maleRow: number; femaleRow: number }[]>([]);
 
+  // Commit history (undo batches)
+  const [commits, setCommits] = useState<CommitEntry[]>([]);
+  const [showCommitPreview, setShowCommitPreview] = useState<string | null>(null);
+  const [commitPreviewData, setCommitPreviewData] = useState<string>("");
+  const [undoingCommitId, setUndoingCommitId] = useState<string | null>(null);
+
   const templateFileRef = useRef<HTMLInputElement>(null);
+
+  const fetchCommits = useCallback(async () => {
+    try {
+      const res = await fetch("/api/commits");
+      if (res.ok) {
+        const data = await res.json();
+        setCommits(data.commits || []);
+      }
+    } catch {
+      // non-critical
+    }
+  }, []);
 
   const fetchTemplateStatus = useCallback(async () => {
     try {
@@ -75,7 +99,8 @@ export default function UtilizationPage() {
 
   useEffect(() => {
     fetchTemplateStatus();
-  }, [fetchTemplateStatus]);
+    fetchCommits();
+  }, [fetchTemplateStatus, fetchCommits]);
 
   const fetchMappings = useCallback(async () => {
     try {
@@ -171,6 +196,9 @@ export default function UtilizationPage() {
           const batchColleges = getUpdatedColleges(data.summary.map((s: SummaryEntry) => s.label));
           setUpdatedCollegesAccumulated((prev) => new Set([...prev, ...batchColleges]));
         }
+        if (data.commit) {
+          setCommits((prev) => [...prev, { id: data.commit!.id, timestamp: data.commit!.timestamp }]);
+        }
       } else {
         setDownloadUrl(null);
       }
@@ -237,8 +265,72 @@ export default function UtilizationPage() {
     setRemovedFromUnmatched(new Set());
     setMappingCode(null);
     setSelectedProgramIds(new Set());
+    setCommits([]);
+    setShowCommitPreview(null);
+    setCommitPreviewData("");
     if (downloadUrl) URL.revokeObjectURL(downloadUrl);
     setDownloadUrl(null);
+  }
+
+  async function handleUndoCommit(commitId: string) {
+    setUndoingCommitId(commitId);
+    setShowCommitPreview(null);
+    try {
+      const res = await fetch("/api/undo-commit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commitId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setResult({ error: data.error || "Undo failed" });
+        setAppState("error");
+        return;
+      }
+      setCommits(data.commits || []);
+      if (data.file) {
+        const bytes = Uint8Array.from(atob(data.file), (c) => c.charCodeAt(0));
+        const blob = new Blob([bytes], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        });
+        const url = URL.createObjectURL(blob);
+        if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+        setDownloadUrl(url);
+        setLastProcessedFileBase64(data.file);
+        setAppState("done");
+        const summary = (data.summary || []) as SummaryEntry[];
+        setResult({ matched: data.matched ?? 0, summary });
+        if (summary.length > 0) {
+          setUpdatedCollegesAccumulated(getUpdatedColleges(summary.map((s) => s.label)));
+        }
+      } else {
+        if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+        setDownloadUrl(null);
+        setLastProcessedFileBase64(null);
+        setAppState("idle");
+        setResult(null);
+        setUpdatedCollegesAccumulated(new Set());
+      }
+    } catch {
+      setResult({ error: "Network error during undo" });
+      setAppState("error");
+    } finally {
+      setUndoingCommitId(null);
+    }
+  }
+
+  async function handleCommitPreview(commitId: string) {
+    try {
+      const res = await fetch(`/api/commits/${commitId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCommitPreviewData(data.pastedData || "");
+        setShowCommitPreview(commitId);
+      }
+    } catch {
+      setCommitPreviewData("Failed to load pasted data.");
+      setShowCommitPreview(commitId);
+    }
   }
 
   async function handleStartNewReport() {
@@ -247,6 +339,7 @@ export default function UtilizationPage() {
       const res = await fetch("/api/reset-report", { method: "POST" });
       const data = await res.json();
       handleReset();
+      await fetchCommits();
       if (res.ok) {
         setTemplateMessage({ type: "success", text: data.message });
         setTimeout(() => setTemplateMessage(null), 4000);
@@ -367,19 +460,22 @@ export default function UtilizationPage() {
           padding: "0",
         }}
       >
-        <div style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 24px" }}>
-          <Link
-            href="/"
-            style={{
-              display: "inline-block",
-              marginBottom: 8,
-            }}
-          >
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: "0 auto",
+            padding: "20px 24px 20px 12px",
+            display: "flex",
+            alignItems: "center",
+            gap: 20,
+          }}
+        >
+          <Link href="/" style={{ flexShrink: 0 }}>
             <Image src={logoImg} alt="Quazar" width={120} height={36} style={{ display: "block" }} />
           </Link>
           <div>
             <div style={{ fontSize: 11, opacity: 0.75, letterSpacing: 1, textTransform: "uppercase", marginBottom: 2 }}>
-              Library Service only
+              Library Service
             </div>
             <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>
               Library User Utilization
@@ -405,6 +501,9 @@ export default function UtilizationPage() {
             background: "white",
             borderRight: "1px solid var(--border)",
             padding: "20px 0",
+            position: "sticky",
+            top: 0,
+            alignSelf: "flex-start",
           }}
         >
           <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -436,15 +535,115 @@ export default function UtilizationPage() {
               </button>
             ))}
           </nav>
+
+          {commits.length > 0 && (
+            <div
+              style={{
+                marginTop: 24,
+                padding: "0 16px",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "var(--muted)",
+                  textTransform: "uppercase",
+                  marginBottom: 8,
+                }}
+              >
+                Undo batches
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {[...commits].reverse().map((c, reversedIndex) => {
+                  const commitNumber = commits.length - reversedIndex;
+                  const d = new Date(c.timestamp);
+                  const dateStr = d.toLocaleString(undefined, {
+                    month: "long",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  });
+                  return (
+                  <div
+                    key={c.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 10px",
+                      background: "#f9fafb",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      cursor: "pointer",
+                    }}
+                    onClick={() => handleCommitPreview(c.id)}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--foreground)" }}>
+                        Commit {commitNumber}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "var(--muted)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={d.toLocaleString()}
+                      >
+                        {dateStr}
+                      </div>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleUndoCommit(c.id);
+                      }}
+                      disabled={undoingCommitId === c.id}
+                      title="Remove this batch (undo)"
+                      style={{
+                        width: 24,
+                        height: 24,
+                        padding: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        border: "none",
+                        borderRadius: 4,
+                        background: "transparent",
+                        color: "var(--muted)",
+                        fontSize: 14,
+                        cursor: undoingCommitId === c.id ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {undoingCommitId === c.id ? "…" : "×"}
+                    </button>
+                  </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </aside>
 
-        {/* Content area */}
+        {/* Content area + Department Status */}
         <div
           style={{
             flex: 1,
-            padding: "28px 32px",
+            display: "flex",
+            gap: 24,
+            minWidth: 0,
+            padding: "28px 32px 28px 0",
+          }}
+        >
+        <div
+          style={{
+            flex: 1,
             overflow: "auto",
             maxWidth: 1000,
+            paddingLeft: 32,
           }}
         >
         {activeView === "main" && (
@@ -549,39 +748,22 @@ export default function UtilizationPage() {
               </span>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 {(appState === "done" || appState === "error") && (
-                  <>
-                    <button
-                      onClick={handleStartNewReport}
-                      disabled={resettingReport}
-                      style={{
-                        padding: "9px 20px",
-                        borderRadius: 8,
-                        border: "1.5px solid var(--border)",
-                        background: "white",
-                        color: "var(--foreground)",
-                        fontSize: 14,
-                        cursor: resettingReport ? "not-allowed" : "pointer",
-                        fontWeight: 500,
-                      }}
-                    >
-                      {resettingReport ? "Resetting..." : "Start new report"}
-                    </button>
-                    <button
-                      onClick={handleReset}
-                      style={{
-                        padding: "9px 20px",
-                        borderRadius: 8,
-                        border: "1.5px solid var(--border)",
-                        background: "white",
-                        color: "var(--foreground)",
-                        fontSize: 14,
-                        cursor: "pointer",
-                        fontWeight: 500,
-                      }}
-                    >
-                      Clear & Reset
-                    </button>
-                  </>
+                  <button
+                    onClick={handleStartNewReport}
+                    disabled={resettingReport}
+                    style={{
+                      padding: "9px 20px",
+                      borderRadius: 8,
+                      border: "1.5px solid var(--border)",
+                      background: "white",
+                      color: "var(--foreground)",
+                      fontSize: 14,
+                      cursor: resettingReport ? "not-allowed" : "pointer",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {resettingReport ? "Resetting..." : "Reset"}
+                  </button>
                 )}
                 <button
                   onClick={handleProcess}
@@ -682,7 +864,22 @@ export default function UtilizationPage() {
                 {downloadUrl && (
                   <a
                     href={downloadUrl}
-                    download="Library_User_Utilization_Filled.xlsx"
+                    download={(() => {
+                      const d = new Date();
+                      d.setMonth(d.getMonth() - 1); // last month (audited at start of month)
+                      return `${d.toLocaleString("en-US", { month: "long" })}_Library_User_Utilization_${d.getFullYear()}.xlsx`;
+                    })()}
+                    onClick={async () => {
+                      // Auto-reset after download so next month starts fresh (no overlapping data)
+                      setTimeout(async () => {
+                        try {
+                          await fetch("/api/reset-report", { method: "POST" });
+                          handleReset();
+                        } catch {
+                          /* ignore */
+                        }
+                      }, 500);
+                    }}
                     style={{
                       padding: "10px 26px",
                       borderRadius: 8,
@@ -816,97 +1013,6 @@ export default function UtilizationPage() {
             </div>
           )}
 
-        </div>
-
-        {/* Department status (main view only) */}
-        <div
-          style={{
-            flex: "0 0 220px",
-            position: "sticky",
-            top: 24,
-          }}
-        >
-          <div
-            style={{
-              background: "white",
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              padding: "16px 18px",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: 13,
-                marginBottom: 12,
-                color: "var(--foreground)",
-              }}
-            >
-              Department Status
-            </div>
-            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 12, lineHeight: 1.4 }}>
-              {appState === "idle" || appState === "processing" ? (
-                "Process data to see which departments have been updated."
-              ) : appState === "done" ? (
-                "Departments with data in the report:"
-              ) : (
-                "—"
-              )}
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {COLLEGES.map((college) => {
-                const hasData = updatedColleges.has(college.id);
-                const showCheck = appState === "done";
-                return (
-                  <div
-                    key={college.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: "6px 8px",
-                      borderRadius: 6,
-                      background: showCheck ? (hasData ? "#f0fdf4" : "#f9fafb") : "transparent",
-                      border: showCheck && hasData ? "1px solid #86efac" : "1px solid transparent",
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: "50%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        flexShrink: 0,
-                        background: showCheck
-                          ? hasData
-                            ? "var(--success)"
-                            : "#e5e7eb"
-                          : "#e5e7eb",
-                        color: showCheck ? (hasData ? "white" : "#9ca3af") : "#9ca3af",
-                      }}
-                    >
-                      {showCheck ? (hasData ? "✓" : "✗") : "—"}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 12,
-                        color: showCheck ? (hasData ? "var(--success)" : "var(--muted)") : "var(--muted)",
-                        fontWeight: hasData ? 600 : 400,
-                        lineHeight: 1.3,
-                      }}
-                    >
-                      {college.name}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
         </div>
         </div>
         )}
@@ -1169,6 +1275,101 @@ export default function UtilizationPage() {
           </div>
         )}
 
+        </div>
+
+        {activeView === "main" && (
+        <div
+          style={{
+            flex: "0 0 220px",
+            position: "sticky",
+            top: 24,
+            alignSelf: "flex-start",
+          }}
+        >
+          <div
+            style={{
+              background: "white",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              padding: "16px 18px",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: 13,
+                marginBottom: 12,
+                color: "var(--foreground)",
+              }}
+            >
+              Department Status
+            </div>
+            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 12, lineHeight: 1.4 }}>
+              {appState === "idle" || appState === "processing" ? (
+                "Process data to see which departments have been updated."
+              ) : appState === "done" ? (
+                "Departments with data in the report:"
+              ) : (
+                "—"
+              )}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {COLLEGES.map((college) => {
+                const hasData = updatedColleges.has(college.id);
+                const showCheck = appState === "done";
+                return (
+                  <div
+                    key={college.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "6px 8px",
+                      borderRadius: 6,
+                      background: showCheck ? (hasData ? "#f0fdf4" : "#f9fafb") : "transparent",
+                      border: showCheck && hasData ? "1px solid #86efac" : "1px solid transparent",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: "50%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        flexShrink: 0,
+                        background: showCheck
+                          ? hasData
+                            ? "var(--success)"
+                            : "#e5e7eb"
+                          : "#e5e7eb",
+                        color: showCheck ? (hasData ? "white" : "#9ca3af") : "#9ca3af",
+                      }}
+                    >
+                      {showCheck ? (hasData ? "✓" : "✗") : "—"}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: showCheck ? (hasData ? "var(--success)" : "var(--muted)") : "var(--muted)",
+                        fontWeight: hasData ? 600 : 400,
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      {college.name}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+        )}
+
         {/* Mapping modal - renders for all views (Main, Template, Mappings) */}
         {showMappingModal && (
           <div
@@ -1331,6 +1532,79 @@ export default function UtilizationPage() {
                   }}
                 >
                   {savingMapping ? "Saving..." : `Save mapping${selectedProgramIds.size > 1 ? ` (${selectedProgramIds.size} programs)` : ""}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showCommitPreview && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+              padding: 24,
+            }}
+            onClick={() => setShowCommitPreview(null)}
+          >
+            <div
+              style={{
+                background: "white",
+                borderRadius: 12,
+                padding: "24px 28px",
+                maxWidth: 640,
+                width: "100%",
+                maxHeight: "80vh",
+                overflow: "hidden",
+                display: "flex",
+                flexDirection: "column",
+                boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 700 }}>
+                Pasted data for this batch
+              </h3>
+              <p style={{ margin: "0 0 12px", fontSize: 13, color: "var(--muted)" }}>
+                This is what was pasted when this batch was processed.
+              </p>
+              <pre
+                style={{
+                  flex: 1,
+                  overflow: "auto",
+                  padding: 16,
+                  background: "#f9fafb",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontFamily: "monospace",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  margin: 0,
+                }}
+              >
+                {commitPreviewData}
+              </pre>
+              <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  onClick={() => setShowCommitPreview(null)}
+                  style={{
+                    padding: "8px 20px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: "var(--primary)",
+                    color: "white",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Close
                 </button>
               </div>
             </div>
