@@ -770,9 +770,12 @@ export default function UtilizationPage() {
                   )}
                 </div>
               )}
+            </div>
+          )}
+        </div>
 
-              {/* Add to record / Create-Edit mapping modal */}
-              {showMappingModal && (
+        {/* Add to record / Create-Edit mapping modal - rendered outside views so it works from Course Mappings */}
+        {showMappingModal && (
                 <div
                   style={{
                     position: "fixed",
