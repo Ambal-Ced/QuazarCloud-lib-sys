@@ -59,16 +59,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = saveCustomMapping(code.trim(), ids);
-
-    if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: 400 });
+    // Save both "department | track" and "track" for all departments (CICS, CTE, CET, CABE, CAS, etc.)
+    const trimmed = code.trim();
+    const codesToSave: string[] = [trimmed];
+    if (trimmed.includes(" | ")) {
+      const trackOnly = trimmed.split(" | ").pop()!.trim();
+      if (trackOnly && trackOnly !== trimmed) codesToSave.push(trackOnly);
     }
 
+    for (const c of codesToSave) {
+      const result = saveCustomMapping(c, ids);
+      if (!result.success) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+    }
+
+    const displayCode = codesToSave[0];
     const msg =
       ids.length === 1
-        ? `"${code.trim()}" is now mapped to one program.`
-        : `"${code.trim()}" is now mapped to ${ids.length} programs (counts will be distributed equally).`;
+        ? `"${displayCode}" is now mapped to one program.`
+        : `"${displayCode}" is now mapped to ${ids.length} programs (counts will be distributed equally).`;
     return NextResponse.json({
       message: msg + " Use it in future processing.",
     });

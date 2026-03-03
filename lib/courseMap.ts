@@ -1,5 +1,5 @@
 /**
- * Maps course codes (as they appear in column 7 of the pasted data)
+ * Maps course codes (as they appear in columns 6 and 7 of the pasted data)
  * to their corresponding Excel rows in the February sheet.
  *
  * maleRow / femaleRow are 1-based row numbers in the "February" sheet.

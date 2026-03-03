@@ -1,1 +1,150 @@
-{}
+{
+  "CICS | BSITECH": {
+    "distribution": [
+      {
+        "label": "Bachelor of Science in Information Technology - Business Analytics Track (CICS)",
+        "maleRow": 44,
+        "femaleRow": 45
+      },
+      {
+        "label": "Bachelor of Science in Information Technology - Service Management Track (CICS)",
+        "maleRow": 49,
+        "femaleRow": 50
+      },
+      {
+        "label": "Bachelor of Science in Information Technology - Network Technology Track (CICS)",
+        "maleRow": 54,
+        "femaleRow": 55
+      }
+    ]
+  },
+  "BSITECH": {
+    "distribution": [
+      {
+        "label": "Bachelor of Science in Information Technology - Business Analytics Track (CICS)",
+        "maleRow": 44,
+        "femaleRow": 45
+      },
+      {
+        "label": "Bachelor of Science in Information Technology - Service Management Track (CICS)",
+        "maleRow": 49,
+        "femaleRow": 50
+      },
+      {
+        "label": "Bachelor of Science in Information Technology - Network Technology Track (CICS)",
+        "maleRow": 54,
+        "femaleRow": 55
+      }
+    ]
+  },
+  "CICS | BSITECH /SM": {
+    "label": "Bachelor of Science in Information Technology - Service Management Track (CICS)",
+    "maleRow": 49,
+    "femaleRow": 50
+  },
+  "BSITECH /SM": {
+    "label": "Bachelor of Science in Information Technology - Service Management Track (CICS)",
+    "maleRow": 49,
+    "femaleRow": 50
+  },
+  "CICS | BSITECH /BA": {
+    "label": "Bachelor of Science in Information Technology - Business Analytics Track (CICS)",
+    "maleRow": 44,
+    "femaleRow": 45
+  },
+  "BSITECH /BA": {
+    "label": "Bachelor of Science in Information Technology - Business Analytics Track (CICS)",
+    "maleRow": 44,
+    "femaleRow": 45
+  },
+  "CICS | BSITECH /NT": {
+    "label": "Bachelor of Science in Information Technology - Network Technology Track (CICS)",
+    "maleRow": 54,
+    "femaleRow": 55
+  },
+  "BSITECH /NT": {
+    "label": "Bachelor of Science in Information Technology - Network Technology Track (CICS)",
+    "maleRow": 54,
+    "femaleRow": 55
+  },
+  "CIT | BINTECH /CPETC": {
+    "label": "Bachelor of Industrial Technology Major in Computer Technology (CET)",
+    "maleRow": 29,
+    "femaleRow": 30
+  },
+  "BINTECH /CPETC": {
+    "label": "Bachelor of Industrial Technology Major in Computer Technology (CET)",
+    "maleRow": 29,
+    "femaleRow": 30
+  },
+  "CIT | BET-ELXETC": {
+    "label": "Bachelor of Industrial Technology Major in Electronics Technology (CET)",
+    "maleRow": 39,
+    "femaleRow": 40
+  },
+  "BET-ELXETC": {
+    "label": "Bachelor of Industrial Technology Major in Electronics Technology (CET)",
+    "maleRow": 39,
+    "femaleRow": 40
+  },
+  "CIT | BET-ELETC": {
+    "label": "Bachelor of Industrial Technology Major in Electrical Technology (CET)",
+    "maleRow": 24,
+    "femaleRow": 25
+  },
+  "BET-ELETC": {
+    "label": "Bachelor of Industrial Technology Major in Electrical Technology (CET)",
+    "maleRow": 24,
+    "femaleRow": 25
+  },
+  "CIT | BINTECH /ELETC": {
+    "label": "Bachelor of Industrial Technology Major in Electrical Technology (CET)",
+    "maleRow": 24,
+    "femaleRow": 25
+  },
+  "BINTECH /ELETC": {
+    "label": "Bachelor of Industrial Technology Major in Electrical Technology (CET)",
+    "maleRow": 24,
+    "femaleRow": 25
+  },
+  "CIT | BET-ICETC": {
+    "label": "Bachelor of Industrial Technology Major in Instrumentation & Communication Technology (CET)",
+    "maleRow": 34,
+    "femaleRow": 35
+  },
+  "BET-ICETC": {
+    "label": "Bachelor of Industrial Technology Major in Instrumentation & Communication Technology (CET)",
+    "maleRow": 34,
+    "femaleRow": 35
+  },
+  "CTE | BSED /ENG": {
+    "label": "Bachelor of Science in Education Major in English (CTE)",
+    "maleRow": 94,
+    "femaleRow": 95
+  },
+  "BSED /ENG": {
+    "label": "Bachelor of Science in Education Major in English (CTE)",
+    "maleRow": 94,
+    "femaleRow": 95
+  },
+  "CTE | BSED /MATH": {
+    "label": "Bachelor of Science in Education Major in Mathematics (CTE)",
+    "maleRow": 84,
+    "femaleRow": 85
+  },
+  "BSED /MATH": {
+    "label": "Bachelor of Science in Education Major in Mathematics (CTE)",
+    "maleRow": 84,
+    "femaleRow": 85
+  },
+  "CTE | BSED /SCI": {
+    "label": "Bachelor of Science in Education Major in Science (CTE)",
+    "maleRow": 89,
+    "femaleRow": 90
+  },
+  "BSED /SCI": {
+    "label": "Bachelor of Science in Education Major in Science (CTE)",
+    "maleRow": 89,
+    "femaleRow": 90
+  }
+}

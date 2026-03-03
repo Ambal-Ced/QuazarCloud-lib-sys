@@ -13,7 +13,7 @@ Paste records from the source system → get a fully filled Excel report → dow
 3. Click **Process Data**
 4. Download the filled `.xlsx` file — all formulas recalculate automatically
 
-The system reads **column 2** (date), **column 5** (sex: MALE/FEMALE), and **column 7** (course/program code) from the pasted data.
+The system reads **column 2** (date), **column 5** (sex: MALE/FEMALE), **column 6** (course/program confirm), and **column 7** (course code) from the pasted data. Column 6 is used with column 7 to ensure records are mapped to the correct program.
 
 ---
 

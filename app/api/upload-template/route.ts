@@ -4,6 +4,27 @@ import fs from "fs";
 
 export const runtime = "nodejs";
 
+const PREFERENCE_FILE = path.join(process.cwd(), "data", "template_preference.json");
+
+function getPreference(): { useDefault: boolean } {
+  try {
+    if (fs.existsSync(PREFERENCE_FILE)) {
+      const raw = fs.readFileSync(PREFERENCE_FILE, "utf-8");
+      const data = JSON.parse(raw);
+      return { useDefault: data.useDefault === true };
+    }
+  } catch {
+    // ignore
+  }
+  return { useDefault: false }; // default to custom if it exists
+}
+
+function setPreference(useDefault: boolean) {
+  const dataDir = path.join(process.cwd(), "data");
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  fs.writeFileSync(PREFERENCE_FILE, JSON.stringify({ useDefault }));
+}
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
@@ -39,9 +60,10 @@ export async function POST(req: NextRequest) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
 
-    // Save as custom_template.xlsx — this overrides the default template
+    // Save as custom_template.xlsx
     const savePath = path.join(dataDir, "custom_template.xlsx");
     fs.writeFileSync(savePath, buffer);
+    setPreference(false); // switch to custom after upload
 
     return NextResponse.json({
       message: "Template uploaded successfully. It will be used for all future processing.",
@@ -66,6 +88,7 @@ export async function DELETE() {
     );
     if (fs.existsSync(customTemplatePath)) {
       fs.unlinkSync(customTemplatePath);
+      setPreference(true); // switch back to default
       return NextResponse.json({
         message: "Custom template removed. System will use the built-in default template.",
       });
@@ -89,8 +112,42 @@ export async function GET() {
     "custom_template.xlsx"
   );
   const hasCustom = fs.existsSync(customTemplatePath);
+  const { useDefault } = getPreference();
+  const activeIsDefault = useDefault || !hasCustom;
   return NextResponse.json({
-    usingCustomTemplate: hasCustom,
-    templateName: hasCustom ? "custom_template.xlsx" : "template.xlsx (default)",
+    hasCustomTemplate: hasCustom,
+    useDefault: activeIsDefault,
+    templateName: activeIsDefault ? "template.xlsx (default)" : "custom_template.xlsx",
   });
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const useDefault = body.useDefault === true;
+    const customTemplatePath = path.join(process.cwd(), "data", "custom_template.xlsx");
+    const hasCustom = fs.existsSync(customTemplatePath);
+    if (useDefault) {
+      setPreference(true);
+      return NextResponse.json({
+        message: "Using default template.",
+        templateName: "template.xlsx (default)",
+        useDefault: true,
+      });
+    }
+    if (!hasCustom) {
+      return NextResponse.json(
+        { error: "No custom template uploaded. Upload one first." },
+        { status: 400 }
+      );
+    }
+    setPreference(false);
+    return NextResponse.json({
+      message: "Using custom template.",
+      templateName: "custom_template.xlsx",
+      useDefault: false,
+    });
+  } catch {
+    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+  }
 }

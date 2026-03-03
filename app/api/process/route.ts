@@ -7,17 +7,31 @@ import fs from "fs";
 export const runtime = "nodejs";
 
 const CURRENT_REPORT_FILE = path.join(process.cwd(), "data", "current_report.xlsx");
+const PREFERENCE_FILE = path.join(process.cwd(), "data", "template_preference.json");
+
+function getTemplatePreference(): boolean {
+  try {
+    if (fs.existsSync(PREFERENCE_FILE)) {
+      const raw = fs.readFileSync(PREFERENCE_FILE, "utf-8");
+      const data = JSON.parse(raw);
+      return data.useDefault === true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
 
 function getBaseWorkbook(): Buffer {
-  // Prefer accumulated report, then custom template, then default template
   if (fs.existsSync(CURRENT_REPORT_FILE)) {
     return fs.readFileSync(CURRENT_REPORT_FILE);
   }
   const customTemplatePath = path.join(process.cwd(), "data", "custom_template.xlsx");
   const defaultTemplatePath = path.join(process.cwd(), "data", "template.xlsx");
-  const templatePath = fs.existsSync(customTemplatePath)
-    ? customTemplatePath
-    : defaultTemplatePath;
+  const useDefault = getTemplatePreference();
+  const hasCustom = fs.existsSync(customTemplatePath);
+  const templatePath =
+    useDefault || !hasCustom ? defaultTemplatePath : customTemplatePath;
   if (!fs.existsSync(templatePath)) {
     throw new Error("Template file not found. Please upload a template first.");
   }
@@ -53,8 +67,23 @@ export async function POST(req: NextRequest) {
     const customMappings = loadCustomMappings();
     const result = await processData(pasteText, templateBuffer, customMappings);
 
+    // Unknown course codes: return 200 with unmatched so UI shows "Add to record", not error
+    if (!result.success && result.unmatched && result.unmatched.length > 0) {
+      return NextResponse.json({
+        success: true,
+        file: null,
+        totalRecords: result.totalRecords,
+        matched: result.matched ?? 0,
+        unmatched: result.unmatched,
+        summary: [],
+      });
+    }
+
     if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: 400 });
+      return NextResponse.json(
+        { error: result.error, unmatched: result.unmatched ?? [] },
+        { status: 400 }
+      );
     }
 
     // Persist the result for next batch (accumulation)

@@ -2,7 +2,9 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { COLLEGES, getUpdatedColleges } from "@/lib/colleges";
+import logoImg from "@/resources/Quazarcloudlogo.webp";
 
 interface SummaryEntry {
   label: string;
@@ -20,7 +22,8 @@ interface ProcessResponse {
 }
 
 interface TemplateStatus {
-  usingCustomTemplate: boolean;
+  hasCustomTemplate: boolean;
+  useDefault: boolean;
   templateName: string;
 }
 
@@ -154,18 +157,24 @@ export default function UtilizationPage() {
         return;
       }
 
-      const bytes = Uint8Array.from(atob(data.file!), (c) => c.charCodeAt(0));
-      const blob = new Blob([bytes], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      });
-      const url = URL.createObjectURL(blob);
-      setDownloadUrl(url);
       setResult(data);
-      setLastProcessedFileBase64(data.file!);
-      if (data.summary && data.summary.length > 0) {
-        const batchColleges = getUpdatedColleges(data.summary.map((s: SummaryEntry) => s.label));
-        setUpdatedCollegesAccumulated((prev) => new Set([...prev, ...batchColleges]));
+
+      if (data.file) {
+        const bytes = Uint8Array.from(atob(data.file), (c) => c.charCodeAt(0));
+        const blob = new Blob([bytes], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        });
+        const url = URL.createObjectURL(blob);
+        setDownloadUrl(url);
+        setLastProcessedFileBase64(data.file);
+        if (data.summary && data.summary.length > 0) {
+          const batchColleges = getUpdatedColleges(data.summary.map((s: SummaryEntry) => s.label));
+          setUpdatedCollegesAccumulated((prev) => new Set([...prev, ...batchColleges]));
+        }
+      } else {
+        setDownloadUrl(null);
       }
+
       setAppState("done");
       // Auto-clear paste when no unknowns so user can paste next batch
       if (!data.unmatched || data.unmatched.length === 0) {
@@ -272,6 +281,25 @@ export default function UtilizationPage() {
     }
   }
 
+  async function handleSetTemplatePreference(useDefault: boolean) {
+    setTemplateMessage(null);
+    try {
+      const res = await fetch("/api/upload-template", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ useDefault }),
+      });
+      const data = await res.json();
+      if (!res.ok) setTemplateMessage({ type: "error", text: data.error });
+      else {
+        setTemplateMessage({ type: "success", text: data.message });
+        await fetchTemplateStatus();
+      }
+    } catch {
+      setTemplateMessage({ type: "error", text: "Failed to update template selection." });
+    }
+  }
+
   async function handleDeleteMapping(code: string) {
     try {
       const res = await fetch(`/api/course-mappings?code=${encodeURIComponent(code)}`, {
@@ -343,18 +371,15 @@ export default function UtilizationPage() {
           <Link
             href="/"
             style={{
-              fontSize: 12,
-              color: "rgba(255,255,255,0.85)",
-              textDecoration: "none",
               display: "inline-block",
               marginBottom: 8,
             }}
           >
-            ← Quazar-Lib
+            <Image src={logoImg} alt="Quazar" width={120} height={36} style={{ display: "block" }} />
           </Link>
           <div>
             <div style={{ fontSize: 11, opacity: 0.75, letterSpacing: 1, textTransform: "uppercase", marginBottom: 2 }}>
-              BatStateU Lipa Campus · Office of Library Services
+              Library Service only
             </div>
             <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>
               Library User Utilization
@@ -483,8 +508,9 @@ export default function UtilizationPage() {
             </label>
             <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>
               Copy rows directly from the source system (no header needed). The system reads{" "}
-              <strong>column 2</strong> (date), <strong>column 5</strong> (sex), and{" "}
-              <strong>column 7</strong> (course/program code). Data accumulates across batches — paste one department, process, then paste the next. When no unknown codes remain, the paste area clears automatically.
+              <strong>column 2</strong> (date), <strong>column 5</strong> (sex),{" "}
+              <strong>column 6</strong> (course/program confirm), and{" "}
+              <strong>column 7</strong> (course code). Column 6 is used with column 7 to ensure data is placed in the correct program. Data accumulates across batches — paste one department, process, then paste the next. When no unknown codes remain, the paste area clears automatically.
             </div>
             <textarea
               value={pasteData}
@@ -604,12 +630,12 @@ export default function UtilizationPage() {
             </div>
           )}
 
-          {/* Result panel */}
-          {appState === "done" && result && downloadUrl && (
+          {/* Result panel — success with download, or unmatched-only (no Excel update) */}
+          {appState === "done" && result && (downloadUrl || (result.unmatched && result.unmatched.length > 0)) && (
             <div
               style={{
                 background: "white",
-                border: "1.5px solid #6ee7b7",
+                border: downloadUrl ? "1.5px solid #6ee7b7" : "1.5px solid #fcd34d",
                 borderRadius: 12,
                 padding: "20px 24px",
                 marginBottom: 20,
@@ -622,39 +648,56 @@ export default function UtilizationPage() {
                   alignItems: "flex-start",
                   flexWrap: "wrap",
                   gap: 14,
-                  marginBottom: 20,
+                  marginBottom: downloadUrl ? 20 : 12,
                 }}
               >
                 <div>
-                  <div style={{ color: "var(--success)", fontWeight: 700, fontSize: 16, marginBottom: 6 }}>
-                    ✓ Processing Complete
+                  <div
+                    style={{
+                      color: downloadUrl ? "var(--success)" : "var(--warning)",
+                      fontWeight: 700,
+                      fontSize: 16,
+                      marginBottom: 6,
+                    }}
+                  >
+                    {downloadUrl ? "✓ Processing Complete" : "Unknown course codes — no Excel update"}
                   </div>
                   <div style={{ fontSize: 13, color: "var(--muted)" }}>
-                    {result.matched} records written to the Excel file
-                    {result.unmatched && result.unmatched.length > 0 && (
-                      <span style={{ color: "var(--warning)" }}>
-                        {" "}· {result.unmatched.length} unknown course code(s)
-                      </span>
+                    {downloadUrl ? (
+                      <>
+                        {result.matched} records written to the Excel file
+                        {result.unmatched && result.unmatched.length > 0 && (
+                          <span style={{ color: "var(--warning)" }}>
+                            {" "}· {result.unmatched.length} unknown course code(s)
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        Add mappings for the codes below, then click Process Data again. No data was written to Excel.
+                      </>
                     )}
                   </div>
                 </div>
-                <a
-                  href={downloadUrl}
-                  download="Library_User_Utilization_Filled.xlsx"
-                  style={{
-                    padding: "10px 26px",
-                    borderRadius: 8,
-                    background: "var(--success)",
-                    color: "white",
-                    fontWeight: 700,
-                    fontSize: 15,
-                    textDecoration: "none",
-                    display: "inline-block",
-                    boxShadow: "0 2px 6px rgba(5,122,85,0.25)",
-                  }}
-                >
-                  ↓ Download Excel
-                </a>
+                {downloadUrl && (
+                  <a
+                    href={downloadUrl}
+                    download="Library_User_Utilization_Filled.xlsx"
+                    style={{
+                      padding: "10px 26px",
+                      borderRadius: 8,
+                      background: "var(--success)",
+                      color: "white",
+                      fontWeight: 700,
+                      fontSize: 15,
+                      textDecoration: "none",
+                      display: "inline-block",
+                      boxShadow: "0 2px 6px rgba(5,122,85,0.25)",
+                    }}
+                  >
+                    ↓ Download Excel
+                  </a>
+                )}
               </div>
 
               {result.summary && result.summary.length > 0 && (
@@ -772,177 +815,6 @@ export default function UtilizationPage() {
               )}
             </div>
           )}
-        </div>
-
-        {/* Add to record / Create-Edit mapping modal - rendered outside views so it works from Course Mappings */}
-        {showMappingModal && (
-                <div
-                  style={{
-                    position: "fixed",
-                    inset: 0,
-                    background: "rgba(0,0,0,0.5)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    zIndex: 1000,
-                    padding: 24,
-                  }}
-                  onClick={closeMappingModal}
-                >
-                  <div
-                    style={{
-                      background: "white",
-                      borderRadius: 12,
-                      padding: "28px 32px",
-                      maxWidth: 640,
-                      width: "100%",
-                      maxHeight: "90vh",
-                      overflow: "auto",
-                      boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <h3 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 700 }}>
-                      {mappingModalMode === "create" ? "Create mapping" : mappingModalMode === "edit" ? "Edit mapping" : "Add to record"}
-                    </h3>
-                    <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--muted)" }}>
-                      {mappingModalMode === "create" ? (
-                        "Enter the course code and select which program(s) it maps to. Select multiple to distribute counts equally."
-                      ) : (
-                        <>Map &quot;<strong style={{ fontFamily: "monospace" }}>{mappingCode}</strong>&quot; to which program(s)? Select one or more — if multiple, counts are distributed equally.</>
-                      )}
-                    </p>
-                    {mappingModalMode === "create" && (
-                      <div style={{ marginBottom: 12 }}>
-                        <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Course code</label>
-                        <input
-                          type="text"
-                          value={mappingCodeInput}
-                          onChange={(e) => setMappingCodeInput(e.target.value)}
-                          placeholder="e.g. BSITECH / SM"
-                          style={{
-                            width: "100%",
-                            padding: "10px 14px",
-                            fontSize: 14,
-                            border: "1.5px solid var(--border)",
-                            borderRadius: 8,
-                            outline: "none",
-                          }}
-                        />
-                      </div>
-                    )}
-                    <input
-                      type="text"
-                      placeholder="Search programs..."
-                      value={programSearch}
-                      onChange={(e) => setProgramSearch(e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: "10px 14px",
-                        fontSize: 14,
-                        border: "1.5px solid var(--border)",
-                        borderRadius: 8,
-                        marginBottom: 12,
-                        outline: "none",
-                      }}
-                    />
-                    <div
-                      style={{
-                        maxHeight: 340,
-                        overflowY: "auto",
-                        border: "1.5px solid var(--border)",
-                        borderRadius: 8,
-                        padding: "10px 14px",
-                        marginBottom: 16,
-                        background: "#fafafa",
-                      }}
-                    >
-                      {(() => {
-                        const filtered = programs.filter((p) =>
-                          !programSearch.trim()
-                            ? true
-                            : p.name.toLowerCase().includes(programSearch.trim().toLowerCase())
-                        );
-                        if (filtered.length === 0) {
-                          return (
-                            <div style={{ padding: "16px 0", color: "var(--muted)", fontSize: 13 }}>
-                              No matching programs. Try a different search.
-                            </div>
-                          );
-                        }
-                        return filtered.map((p) => (
-                        <label
-                          key={p.id}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
-                            padding: "6px 0",
-                            cursor: "pointer",
-                            fontSize: 13,
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedProgramIds.has(p.id)}
-                            onChange={() => toggleProgram(p.id)}
-                          />
-                          <span style={{ color: "var(--foreground)" }}>{p.name}</span>
-                        </label>
-                      ));
-                      })()}
-                    </div>
-                    {mappingMessage && (
-                      <div
-                        style={{
-                          marginBottom: 12,
-                          padding: "8px 12px",
-                          borderRadius: 6,
-                          fontSize: 12,
-                          background: mappingMessage.type === "success" ? "#f0fdf4" : "#fef2f2",
-                          border: `1px solid ${mappingMessage.type === "success" ? "#86efac" : "#fca5a5"}`,
-                          color: mappingMessage.type === "success" ? "var(--success)" : "var(--danger)",
-                        }}
-                      >
-                        {mappingMessage.text}
-                      </div>
-                    )}
-                    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-                      <button
-                        onClick={closeMappingModal}
-                        style={{
-                          padding: "8px 18px",
-                          borderRadius: 8,
-                          border: "1.5px solid var(--border)",
-                          background: "white",
-                          fontSize: 13,
-                          cursor: savingMapping ? "not-allowed" : "pointer",
-                        }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleSaveMapping}
-                        disabled={(mappingModalMode === "create" ? !mappingCodeInput.trim() : false) || selectedProgramIds.size === 0 || savingMapping}
-                        style={{
-                          padding: "8px 20px",
-                          borderRadius: 8,
-                          border: "none",
-                          background: (mappingModalMode === "create" ? !mappingCodeInput.trim() : false) || selectedProgramIds.size === 0 || savingMapping ? "#9ca3af" : "var(--primary)",
-                          color: "white",
-                          fontSize: 13,
-                          fontWeight: 600,
-                          cursor: (mappingModalMode === "create" ? !mappingCodeInput.trim() : false) || selectedProgramIds.size === 0 || savingMapping ? "not-allowed" : "pointer",
-                        }}
-                      >
-                        {savingMapping ? "Saving..." : `Save mapping${selectedProgramIds.size > 1 ? ` (${selectedProgramIds.size} programs)` : ""}`}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
 
         </div>
 
@@ -1054,21 +926,65 @@ export default function UtilizationPage() {
               Upload a new .xlsx template when the program names change or for a different month.
             </p>
             {templateStatus && (
-              <div
-                style={{
-                  padding: "14px 18px",
-                  background: templateStatus.usingCustomTemplate ? "#f0fdf4" : "#f9fafb",
-                  border: `1px solid ${templateStatus.usingCustomTemplate ? "#86efac" : "var(--border)"}`,
-                  borderRadius: 8,
-                  fontSize: 14,
-                  marginBottom: 20,
-                }}
-              >
-                <strong>Active template:</strong>{" "}
-                <span style={{ fontFamily: "monospace" }}>{templateStatus.templateName}</span>
-                {templateStatus.usingCustomTemplate && (
-                  <button
-                    onClick={handleRemoveTemplate}
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                    marginBottom: 20,
+                  }}
+                >
+                  <strong style={{ fontSize: 13, color: "var(--muted)" }}>Choose template</strong>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                    <button
+                      onClick={() => handleSetTemplatePreference(true)}
+                      style={{
+                        padding: "10px 18px",
+                        borderRadius: 8,
+                        border: templateStatus.useDefault ? "2px solid var(--primary)" : "1px solid var(--border)",
+                        background: templateStatus.useDefault ? "#eff6ff" : "white",
+                        color: templateStatus.useDefault ? "var(--primary)" : "var(--foreground)",
+                        fontSize: 13,
+                        fontWeight: templateStatus.useDefault ? 600 : 500,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Default template
+                    </button>
+                    <button
+                      onClick={() => handleSetTemplatePreference(false)}
+                      disabled={!templateStatus.hasCustomTemplate}
+                      style={{
+                        padding: "10px 18px",
+                        borderRadius: 8,
+                        border: !templateStatus.useDefault && templateStatus.hasCustomTemplate ? "2px solid var(--primary)" : "1px solid var(--border)",
+                        background: !templateStatus.useDefault && templateStatus.hasCustomTemplate ? "#eff6ff" : "white",
+                        color: !templateStatus.hasCustomTemplate ? "#9ca3af" : !templateStatus.useDefault ? "var(--primary)" : "var(--foreground)",
+                        fontSize: 13,
+                        fontWeight: !templateStatus.useDefault && templateStatus.hasCustomTemplate ? 600 : 500,
+                        cursor: templateStatus.hasCustomTemplate ? "pointer" : "not-allowed",
+                      }}
+                    >
+                      Custom template
+                    </button>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    padding: "14px 18px",
+                    background: !templateStatus.useDefault && templateStatus.hasCustomTemplate ? "#f0fdf4" : "#f9fafb",
+                    border: `1px solid ${!templateStatus.useDefault && templateStatus.hasCustomTemplate ? "#86efac" : "var(--border)"}`,
+                    borderRadius: 8,
+                    fontSize: 14,
+                    marginBottom: 20,
+                  }}
+                >
+                  <strong>Active template:</strong>{" "}
+                  <span style={{ fontFamily: "monospace" }}>{templateStatus.templateName}</span>
+                  {templateStatus.hasCustomTemplate && (
+                    <button
+                      onClick={handleRemoveTemplate}
                     style={{
                       marginLeft: 12,
                       padding: "4px 12px",
@@ -1084,13 +1000,17 @@ export default function UtilizationPage() {
                     Delete template
                   </button>
                 )}
-              </div>
+                </div>
+              </>
             )}
             <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
               <input
                 ref={templateFileRef}
                 type="file"
                 accept=".xlsx"
+                onChange={(e) => {
+                  if (e.target.files?.[0]) handleTemplateUpload();
+                }}
                 style={{ fontSize: 13, flex: "1 1 220px" }}
               />
               <button
@@ -1246,6 +1166,174 @@ export default function UtilizationPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Mapping modal - renders for all views (Main, Template, Mappings) */}
+        {showMappingModal && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+              padding: 24,
+            }}
+            onClick={closeMappingModal}
+          >
+            <div
+              style={{
+                background: "white",
+                borderRadius: 12,
+                padding: "28px 32px",
+                maxWidth: 640,
+                width: "100%",
+                maxHeight: "90vh",
+                overflow: "auto",
+                boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 700 }}>
+                {mappingModalMode === "create" ? "Create mapping" : mappingModalMode === "edit" ? "Edit mapping" : "Add to record"}
+              </h3>
+              <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--muted)" }}>
+                {mappingModalMode === "create" ? (
+                  "Enter the course code and select which program(s) it maps to. Select multiple to distribute counts equally."
+                ) : (
+                  <>Map &quot;<strong style={{ fontFamily: "monospace" }}>{mappingCode}</strong>&quot; to which program(s)? Select one or more — if multiple, counts are distributed equally.</>
+                )}
+              </p>
+              {mappingModalMode === "create" && (
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Course code</label>
+                  <input
+                    type="text"
+                    value={mappingCodeInput}
+                    onChange={(e) => setMappingCodeInput(e.target.value)}
+                    placeholder="e.g. BSITECH / SM"
+                    style={{
+                      width: "100%",
+                      padding: "10px 14px",
+                      fontSize: 14,
+                      border: "1.5px solid var(--border)",
+                      borderRadius: 8,
+                      outline: "none",
+                    }}
+                  />
+                </div>
+              )}
+              <input
+                type="text"
+                placeholder="Search programs..."
+                value={programSearch}
+                onChange={(e) => setProgramSearch(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  fontSize: 14,
+                  border: "1.5px solid var(--border)",
+                  borderRadius: 8,
+                  marginBottom: 12,
+                  outline: "none",
+                }}
+              />
+              <div
+                style={{
+                  maxHeight: 340,
+                  overflowY: "auto",
+                  border: "1.5px solid var(--border)",
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                  marginBottom: 16,
+                  background: "#fafafa",
+                }}
+              >
+                {(() => {
+                  const filtered = programs.filter((p) =>
+                    !programSearch.trim()
+                      ? true
+                      : p.name.toLowerCase().includes(programSearch.trim().toLowerCase())
+                  );
+                  if (filtered.length === 0) {
+                    return (
+                      <div style={{ padding: "16px 0", color: "var(--muted)", fontSize: 13 }}>
+                        No matching programs. Try a different search.
+                      </div>
+                    );
+                  }
+                  return filtered.map((p) => (
+                    <label
+                      key={p.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "6px 0",
+                        cursor: "pointer",
+                        fontSize: 13,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedProgramIds.has(p.id)}
+                        onChange={() => toggleProgram(p.id)}
+                      />
+                      <span style={{ color: "var(--foreground)" }}>{p.name}</span>
+                    </label>
+                  ));
+                })()}
+              </div>
+              {mappingMessage && (
+                <div
+                  style={{
+                    marginBottom: 12,
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    fontSize: 12,
+                    background: mappingMessage.type === "success" ? "#f0fdf4" : "#fef2f2",
+                    border: `1px solid ${mappingMessage.type === "success" ? "#86efac" : "#fca5a5"}`,
+                    color: mappingMessage.type === "success" ? "var(--success)" : "var(--danger)",
+                  }}
+                >
+                  {mappingMessage.text}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button
+                  onClick={closeMappingModal}
+                  style={{
+                    padding: "8px 18px",
+                    borderRadius: 8,
+                    border: "1.5px solid var(--border)",
+                    background: "white",
+                    fontSize: 13,
+                    cursor: savingMapping ? "not-allowed" : "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveMapping}
+                  disabled={(mappingModalMode === "create" ? !mappingCodeInput.trim() : false) || selectedProgramIds.size === 0 || savingMapping}
+                  style={{
+                    padding: "8px 20px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: (mappingModalMode === "create" ? !mappingCodeInput.trim() : false) || selectedProgramIds.size === 0 || savingMapping ? "#9ca3af" : "var(--primary)",
+                    color: "white",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: (mappingModalMode === "create" ? !mappingCodeInput.trim() : false) || selectedProgramIds.size === 0 || savingMapping ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {savingMapping ? "Saving..." : `Save mapping${selectedProgramIds.size > 1 ? ` (${selectedProgramIds.size} programs)` : ""}`}
+                </button>
+              </div>
+            </div>
           </div>
         )}
         </div>
